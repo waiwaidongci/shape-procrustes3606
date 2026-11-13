@@ -104,3 +104,19 @@ CREATE TABLE inspection_notes (
 )
 
 ;
+
+CREATE TABLE blind_verifications (
+	id SERIAL NOT NULL,
+	run_id INTEGER NOT NULL,
+	run_fingerprint VARCHAR(64) NOT NULL,
+	input_fingerprint VARCHAR(64) NOT NULL,
+	input JSON NOT NULL,
+	result JSON NOT NULL,
+	verified_by VARCHAR(160) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	PRIMARY KEY (id),
+	UNIQUE (run_id, input_fingerprint),
+	FOREIGN KEY(run_id) REFERENCES alignment_runs (id)
+)
+
+;

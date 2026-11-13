@@ -8,9 +8,9 @@
 
 | 角色 | 页面 | 权限 | 典型动作 |
 |---|---|---|---|
-| admin 复验负责人 | 六页全部 | 写入、排队、说明、批准/退回、导出 | 批注角点与制造约束复验 |
-| analyst 形状分析员 | 六页全部 | 集合/模板/裁片维护、排队、提出说明、导出已批准说明 | 比较原始轮廓、配准及模态 |
-| viewer 纸模观察员 | 六页全部 | 只读与已批准CSV下载，写入/审批403 | 阅读同源口径和分发依据 |
+| admin 复验负责人 | 七页全部 | 写入、排队、说明、批准/退回、导出、盲验 | 批注角点与制造约束复验 |
+| analyst 形状分析员 | 七页全部 | 集合/模板/裁片维护、排队、盲验、提出说明、导出已批准说明 | 比较原始轮廓、配准及模态 |
+| viewer 纸模观察员 | 七页全部 | 只读与已批准CSV下载，写入/审批/盲验403 | 阅读同源口径和分发依据 |
 
 账号：`admin@tinglan.local`、`analyst@tinglan.local`、`viewer@tinglan.local`；共同密码 `Tinglan2026!`。
 
@@ -24,6 +24,7 @@
 6. 09:25 查看PC1/2/3真实奇异值0.09730803/0.06469489/0.008383326，解释率67.9050%、30.0154%、0.5040%，累计98.4245%。同画布画算术均值及±2sd端点，端点未再单位化。
 7. 09:30 选择TL23，保留3模态重建残差0.00403665。写明实物角点复测、镜像方向与制造约束，不能直接把线性模态作为切割图。
 8. 10:00 沈汀用admin留批注并同意复验；叶禾用viewer下载 `inspection-note-<id>.csv`，含审批、配准摘要、30份轮廓的原始/对齐/重建坐标、两种均值与模态端点。新点需新建冻结研究，不回写历史结果。
+9. 10:20 林澜在“盲验复验”选定主研究，按L1–L8录入一份新裁片的八个角点(mm)，执行盲验：只做去平移、centroid-size正尺度与det(R)=+1旋转，再把对齐坐标投影到冻结均值与保留3个模态，展示得分、重建轮廓与残差。左右反射差异单独以允许反射的残差对照，不消去镜像。同一输入重复提交返回原报告且不新增记录；标签错序/重复/缺失、零centroid-size或共线点被拒绝并说明原因。报告留存输入坐标、研究指纹与输入指纹；后续修改源裁片不影响已留存报告，页面可回看依据与结果。
 
 数值来自固定seed输入的真实API/worker计算；镜像集合最大GPA距离约1.03168，仍保留差异。全同形校验有浮点残差约2.08e−15且没有假模态。
 
@@ -37,7 +38,7 @@ docker compose ps
 docker compose exec -T backend python -m scripts.seed_demo
 ```
 
-前端 http://localhost:18234，后端文档 http://localhost:19234/docs，PostgreSQL localhost:17734。库/用户shapes；密码见.env.example。/health检查DB SELECT1与Redis ping。
+前端 http://localhost:18234，后端文档 http://localhost:19234/docs，PostgreSQL localhost:17734。盲验接口为 `POST /blind-verifications`（body: run_id、8个标签、8×2点）与 `GET /blind-verifications[?run_id=]`。库/用户shapes；密码见.env.example。/health检查DB SELECT1与Redis ping。
 
 SEED_DEMO=true启动只补齐缺项，失败记日志不阻塞应用。自然键为账号email、模板code、集合code、裁片collection_id+code；重复seed不覆盖人工协议、模板点/标签/说明或裁片点/来源。固定seed20261112；3集合各30份8点。镜像集合有3份反射，退化集合首份零centroid-size导致明确失败，不擅自丢掉坏样本。
 
@@ -77,13 +78,15 @@ PCA另取所有对齐坐标flatten后的算术均值μ，不把单位GPA均值�
 
 有效秩阈值为 `eps * max(A.shape) * ||flatten(aligned)||F`，相对于单位对齐数据的机器精度，不用大绝对方差阈值。保存全部真实奇异值/特征值；未解析出方差时没有PCA轴、得分或±2sd模态，解释率不报告。1e−9的真实微形变在独立oracle中保留。计算定义参考 [NumPy SVD](https://numpy.org/doc/stable/reference/generated/numpy.linalg.svd.html)；[SciPy orthogonal_procrustes](https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.orthogonal_procrustes.html)本身允许反射，不能直接替代这里的SO(2)约束。
 
+盲验只对单份新裁片做确定性投影：按冻结标签顺序校验、中心化并除以centroid-size，取与冻结单位GPA均值最近的det(R)=+1旋转，再用冻结载荷求得分 `(aligned−μ)·loadingᵀ`、重建 `μ+score·loading` 与欧氏残差。不重跑GPA交替、不重算奇异值/解释率，新点不加入集合，也不改变冻结结果。反射诊断另算允许反射的最小二乘旋转，只报告哪个残差更小，不据此消去镜像或改变得分。输入指纹覆盖算法版本、研究指纹、标签与坐标，与(run_id, 输入指纹)唯一约束共同保证重复提交不新增记录；报告把输入和研究指纹一并冻结，源点后续编辑不回溯修改。
+
 符号以最大绝对载荷为正固定，只消除符号不确定性。近重复奇异值时模态方向/顺序不唯一，单轴不具物理唯一性；子空间重建和累计解释率更稳。PCA是对齐形状的外在线性描述，端点不强制单位形状、无自交或制造约束，不保证可制造，也不证明工艺成因。
 
 SHA256覆盖算法版本、完整冻结集合/模板/裁片、保留数和容差。按裁片代码规范排序，同输入顺序改变整份结果相同；数据库ID/文字来源变化会改变指纹。结果存数据库和/artifacts/run-<id>.json。对称形状、重复谱方向需按上述不唯一性理解，固定参考并不提供物理因果识别。
 
 ## 代码与本地开发
 
-ShapeCollection、Template、ShapeSpecimen、AlignmentRun、InspectionNote各有独立model/schema/service/controller/route/API。collectionStore管理集合/基准、specimenStore管理原始点、researchStore管理任务/批注。六页为索引、来源、运行、结果、批注、留痕，登录另计；ShapeCanvas复用于索引/模板/配准/模态，同画布保持等比例。PageHeading/StatusBadge/ErrorNotice等共享，useTask/usePolling与format工具复用。宽表只局部滚动，grid使用minmax(0,1fr)/min-width:0；结果选择按真实加载数据同步。
+ShapeCollection、Template、ShapeSpecimen、AlignmentRun、InspectionNote、BlindVerification各有独立model/schema/service/controller/route/API。collectionStore管理集合/基准、specimenStore管理原始点、researchStore管理任务/批注、blindStore管理盲验报告。七页为索引、来源、运行、结果、批注、盲验、留痕，登录另计；ShapeCanvas复用于索引/模板/配准/模态，同画布保持等比例。PageHeading/StatusBadge/ErrorNotice等共享，useTask/usePolling与format工具复用。宽表只局部滚动，grid使用minmax(0,1fr)/min-width:0；结果选择按真实加载数据同步。
 
 目录为backend/src/{models,schemas,services,controllers,routes,config,constants,middlewares,utils}，数学services/{geometry,gpa,deformation}.py，seed与初始migrations；frontend/src/{api,stores,types,constants,components/common,hooks,pages,router,utils}。
 
@@ -105,5 +108,7 @@ python -m src.worker
 npm ci
 npm run dev -- --port 18234
 ```
+
+盲验不排队、不进worker：请求内同步投影，结果只依赖冻结run.result，因此旧研究的盲验不受新任务或源点编辑影响。以(run_id, 输入指纹)唯一约束去重，重复提交返回原报告（HTTP 200、reused=true）而不新增行。
 
 本地worker需可写/artifacts，推荐Compose卷。metadata.create_all只建缺表，初始DDL供审阅，没有生产版本迁移工具。Google Fonts DM Sans/Noto Sans SC/Noto Serif SC，离线回退serif。来源文件名为溯源元数据；没有任意CSV自动导入或自动同源点识别，新增模板可用API，UI核对/修改已有基准。测试/截图/已知差异在独立test-artifacts/gb-0030。收尾docker compose down -v --remove-orphans删除本题数据/结果卷。MIT License。
